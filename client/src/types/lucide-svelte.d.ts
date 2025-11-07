@@ -3,7 +3,8 @@ import type { SvelteComponentTyped } from 'svelte';
 declare module 'lucide-svelte' {
 	import Loader from 'lucide-svelte/icons/loader.svelte';
 	import AlertCircle from 'lucide-svelte/icons/alert-circle.svelte';
-	export { Loader, AlertCircle };
+	import CheckCircle from 'lucide-svelte/icons/check-circle.svelte';
+	export { Loader, AlertCircle, CheckCircle };
 }
 
 declare module 'lucide-svelte/icons/*' {

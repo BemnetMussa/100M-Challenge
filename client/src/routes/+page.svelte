@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import AnalyticsChart from '$lib/components/AnalyticsChart.svelte';
 	import ComparisonMetrics from '$lib/components/ComparisonMatrics.svelte';
-	import { Loader, AlertCircle } from 'lucide-svelte';
+	import { Loader, AlertCircle, CheckCircle } from 'lucide-svelte';
 
 	let analyticsData: any = $state(null);
 	let previousData: any = $state(null);
@@ -10,6 +10,9 @@
 	let error: string | null = $state(null);
 	let fetchTime: number | null = $state(null);
 	let lastFetchTime: string | null = $state(null);
+	let fetchStatus: 'success' | 'error' | null = $state(null);
+	let statusMessage: string | null = $state(null);
+	let statusTimeout: number | null = null;
 
 	onMount(() => {
 		const cached = localStorage.getItem('previousAnalyticsData');
@@ -25,18 +28,21 @@
 
 	async function fetchData() {
 		try {
+			if (statusTimeout !== null) {
+				clearTimeout(statusTimeout);
+				statusTimeout = null;
+			}
+			fetchStatus = null;
+			statusMessage = null;
 			loading = true;
 			error = null;
 			fetchTime = null;
-			const startTime = performance.now();
 
 			const analyticsResponse = await fetch('http://localhost:8000/analytics/events/summary');
 			if (!analyticsResponse.ok) throw new Error('Failed to fetch analytics data');
 
 			const newData = await analyticsResponse.json();
 
-			const endTime = performance.now();
-			fetchTime = Math.round(endTime - startTime);
 			lastFetchTime = new Date().toLocaleTimeString();
 
 			if (analyticsData) {
@@ -45,9 +51,24 @@
 			}
 
 			analyticsData = newData;
+			const seconds = analyticsData.query_time_ms;
+			fetchStatus = 'success';
+			statusMessage = `Fetched ${newData?.data?.length ?? 0} events in ${seconds}s`;
+			statusTimeout = window.setTimeout(() => {
+				fetchStatus = null;
+				statusMessage = null;
+				statusTimeout = null;
+			}, 4000);
 		} catch (err: any) {
 			error = err.message;
 			console.error('[v0] Data fetch error:', err);
+			fetchStatus = 'error';
+			statusMessage = err.message;
+			statusTimeout = window.setTimeout(() => {
+				fetchStatus = null;
+				statusMessage = null;
+				statusTimeout = null;
+			}, 6000);
 		} finally {
 			loading = false;
 		}
@@ -89,6 +110,23 @@
 				<div class="text-sm">
 					<span class="text-gray-400">Last Fetch: </span>
 					<span class="text-white font-mono">{lastFetchTime}</span>
+				</div>
+			{/if}
+
+			{#if fetchStatus}
+				<div
+					class={`flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition-all ${
+						fetchStatus === 'success'
+							? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-200 shadow-[0_0_30px_-12px_rgba(16,185,129,0.6)]'
+							: 'bg-red-500/15 border border-red-500/40 text-red-200 shadow-[0_0_30px_-12px_rgba(239,68,68,0.6)]'
+					}`}
+				>
+					{#if fetchStatus === 'success'}
+						<CheckCircle class="h-4 w-4" />
+					{:else}
+						<AlertCircle class="h-4 w-4" />
+					{/if}
+					<span>{statusMessage}</span>
 				</div>
 			{/if}
 		</div>
