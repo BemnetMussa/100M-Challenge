@@ -12,6 +12,7 @@ services:
       - postgres_data:/var/lib/postgresql/data/
     ports:
       - "5432:5432"
+    shm_size: 1g # increase the shared memory size for large processes
 
   api:
     build: .
