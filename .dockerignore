@@ -1,0 +1,13 @@
+client/
+.git/
+.gitignore
+.dockerignore
+.env
+.env.*
+__pycache__/
+*.pyc
+*.md
+.vscode/
+.idea/
+venv/
+.venv/

@@ -1,10 +1,11 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON
+from sqlalchemy import Column, Integer, String, DateTime, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 import uuid
 from sqlalchemy.dialects.postgresql import UUID
 
 Base = declarative_base()
+
 
 class Event(Base):
     __tablename__ = 'events'

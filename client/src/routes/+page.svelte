@@ -1,14 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import AnalyticsChart from '$lib/components/AnalyticsChart.svelte';
-	import ComparisonMetrics from '$lib/components/ComparisonMatrics.svelte';
+	import ComparisonMetrics from '$lib/components/ComparisonMetrics.svelte';
 	import { Loader, AlertCircle, CheckCircle } from 'lucide-svelte';
+
+	const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 	let analyticsData: any = $state(null);
 	let previousData: any = $state(null);
 	let loading = $state(false);
 	let error: string | null = $state(null);
-	let fetchTime: number | null = $state(null);
 	let lastFetchTime: string | null = $state(null);
 	let fetchStatus: 'success' | 'error' | null = $state(null);
 	let statusMessage: string | null = $state(null);
@@ -19,8 +20,8 @@
 		if (cached) {
 			try {
 				previousData = JSON.parse(cached);
-			} catch (e) {
-				console.error('[v0] Failed to parse cached data:', e);
+			} catch {
+				/* corrupted cache, ignore */
 			}
 		}
 		fetchData();
@@ -36,12 +37,11 @@
 			statusMessage = null;
 			loading = true;
 			error = null;
-			fetchTime = null;
 
-			const analyticsResponse = await fetch('http://localhost:8000/analytics/events/summary');
-			if (!analyticsResponse.ok) throw new Error('Failed to fetch analytics data');
+			const response = await fetch(`${API_BASE}/analytics/events/summary`);
+			if (!response.ok) throw new Error('Failed to fetch analytics data');
 
-			const newData = await analyticsResponse.json();
+			const newData = await response.json();
 
 			lastFetchTime = new Date().toLocaleTimeString();
 
@@ -51,19 +51,19 @@
 			}
 
 			analyticsData = newData;
-			const seconds = analyticsData.query_time_ms;
+			const ms = analyticsData.query_time_ms;
 			fetchStatus = 'success';
-			statusMessage = `Fetched ${newData?.data?.length ?? 0} events in ${seconds}s`;
+			statusMessage = `Fetched ${newData?.data?.length ?? 0} events in ${ms.toFixed(1)}ms`;
 			statusTimeout = window.setTimeout(() => {
 				fetchStatus = null;
 				statusMessage = null;
 				statusTimeout = null;
 			}, 4000);
-		} catch (err: any) {
-			error = err.message;
-			console.error('[v0] Data fetch error:', err);
+		} catch (err: unknown) {
+			const message = err instanceof Error ? err.message : 'Unknown error';
+			error = message;
 			fetchStatus = 'error';
-			statusMessage = err.message;
+			statusMessage = message;
 			statusTimeout = window.setTimeout(() => {
 				fetchStatus = null;
 				statusMessage = null;
@@ -98,14 +98,6 @@
 				{/if}
 			</button>
 
-			<!-- Metrics display with better formatting -->
-			{#if fetchTime !== null}
-				<div class="text-sm">
-					<span class="text-gray-400">Query Time: </span>
-					<span class="text-white font-mono">{(fetchTime / 1000).toFixed(2)}s</span>
-				</div>
-			{/if}
-
 			{#if lastFetchTime}
 				<div class="text-sm">
 					<span class="text-gray-400">Last Fetch: </span>
@@ -139,16 +131,13 @@
 			</div>
 		{/if}
 
-		<!-- Loading State -->
 		<!-- Main Content -->
 		{#if analyticsData}
 			<div class="space-y-8">
-				<!-- Comparison Metrics only shown after second fetch -->
 				{#if previousData}
 					<ComparisonMetrics current={analyticsData} previous={previousData} />
 				{/if}
 
-				<!-- Chart -->
 				{#if analyticsData.data && analyticsData.data.length > 0}
 					<div class="border border-gray-700 rounded-lg bg-gray-950 p-6">
 						<AnalyticsChart data={analyticsData.data} queryTime={analyticsData.query_time_ms} />

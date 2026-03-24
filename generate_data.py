@@ -1,59 +1,79 @@
+import os
 import time
 import io
 import json
+import logging
 from faker import Faker
 import uuid
 import psycopg2
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
-# --Configuration--
-CONN_STRING = "host='127.0.0.1' dbname='eventlog' user='user' password='password'"
-ROWS_TO_GENERATE = 20_000_000 # 20M random data
-BATCH_SIZE = 10_000 # 10,000 rows at a time
+POSTGRES_USER = os.getenv("POSTGRES_USER", "user")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "password")
+DATABASE_HOST = os.getenv("DATABASE_HOST", "127.0.0.1")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "eventlog")
 
-# -- setup --
+ROWS_TO_GENERATE = int(os.getenv("ROWS_TO_GENERATE", "20000000"))
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "10000"))
+
 fake = Faker()
 
-# -- The Generation logic --
+
 def generate_data():
-    conn = psycopg2.connect(CONN_STRING)
-    cursor = conn.cursor()
-    total_rows = 0
-    start_time = time.time()
-
-    print(f"Starting data generation for {ROWS_TO_GENERATE} rows...")
-    while total_rows < ROWS_TO_GENERATE:
-        # create a virtual file in memory 
-        string_io = io.StringIO()
-
-        for _ in range(BATCH_SIZE):
-            event_name = fake.random_element(elements=('page_view', 'add_to_cart', 'checkout', 'user_signup'))
-            user_id = uuid.uuid4()
-            properties = json.dumps({"url": fake.uri(), "item_id": fake.random_int(min=1, max=100)})
-
-            # write a tab separated line to the virtual file
-            string_io.write(f"{event_name}\t{user_id}\t{properties}\n")
-        
-        # Rewind the virtual file to the beginning 
-        string_io.seek(0)
-
-        # use copy_expert to stream the data to Postgres
-        cursor.copy_expert(
-            sql="COPY events (event_name, user_id, properties) FROM STDIN WITH (DELIMITER E'\\t')",
-            file=string_io
+    conn = None
+    cursor = None
+    try:
+        conn = psycopg2.connect(
+            host=DATABASE_HOST,
+            dbname=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
         )
-        conn.commit()
+        cursor = conn.cursor()
+        total_rows = 0
+        start_time = time.time()
 
-        total_rows += BATCH_SIZE
-        print(f"Inserted {total_rows}/{ROWS_TO_GENERATE} rows...")
+        logger.info("Starting data generation for %s rows...", f"{ROWS_TO_GENERATE:,}")
 
-    cursor.close()
-    conn.close()
+        while total_rows < ROWS_TO_GENERATE:
+            string_io = io.StringIO()
 
-    end_time = time.time()
-    print(f"Finished inserting {total_rows} rows in {end_time - start_time:.2f} seconds.")
+            for _ in range(BATCH_SIZE):
+                event_name = fake.random_element(
+                    elements=("page_view", "add_to_cart", "checkout", "user_signup")
+                )
+                user_id = uuid.uuid4()
+                properties = json.dumps({
+                    "url": fake.uri(),
+                    "item_id": fake.random_int(min=1, max=100),
+                })
+                string_io.write(f"{event_name}\t{user_id}\t{properties}\n")
+
+            string_io.seek(0)
+
+            cursor.copy_expert(
+                sql="COPY events (event_name, user_id, properties) FROM STDIN WITH (DELIMITER E'\\t')",
+                file=string_io,
+            )
+            conn.commit()
+
+            total_rows += BATCH_SIZE
+            logger.info("Inserted %s / %s rows", f"{total_rows:,}", f"{ROWS_TO_GENERATE:,}")
+
+        elapsed = time.time() - start_time
+        logger.info("Finished inserting %s rows in %.2f seconds.", f"{total_rows:,}", elapsed)
+
+    except psycopg2.Error:
+        logger.exception("Database error during data generation")
+        raise
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 
-    
-if __name__=="__main__":
+if __name__ == "__main__":
     generate_data()
